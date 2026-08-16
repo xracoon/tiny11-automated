@@ -242,29 +242,37 @@ function Resolve-ImageIndex {
     
     $images = Get-WindowsImage -ImagePath $sourceImagePath
     
-    # Standard Microsoft index mapping for Consumer ISOs
-    $expectedNames = @{
-        1 = "Windows 11 Home"
-        4 = "Windows 11 Education"
-        6 = "Windows 11 Pro"
-        7 = "Windows 11 Pro N"
+    # Treat the familiar consumer ISO numbers as edition selectors. ImageName is
+    # localized, while EditionId is stable across en-US and zh-CN media.
+    $expectedEditions = @{
+        1 = @{ Name = "Windows 11 Home";      EditionId = "Core" }
+        4 = @{ Name = "Windows 11 Education"; EditionId = "Education" }
+        6 = @{ Name = "Windows 11 Pro";       EditionId = "Professional" }
+        7 = @{ Name = "Windows 11 Pro N";     EditionId = "ProfessionalN" }
     }
     
-    $targetName = $expectedNames[$INDEX]
+    $targetEdition = $expectedEditions[$INDEX]
     
-    if ($targetName) {
-        $foundImage = $images | Where-Object { $_.ImageName -eq $targetName }
+    if ($targetEdition) {
+        $foundImage = $images | Where-Object { $_.EditionId -eq $targetEdition.EditionId } | Select-Object -First 1
+        if (-not $foundImage) {
+            # Some DISM builds omit EditionId from the summary list. Query each
+            # image in detail instead of falling back to a localized name.
+            $foundImage = $images | ForEach-Object {
+                Get-WindowsImage -ImagePath $sourceImagePath -Index $_.ImageIndex
+            } | Where-Object { $_.EditionId -eq $targetEdition.EditionId } | Select-Object -First 1
+        }
         if ($foundImage) {
             $actualIndex = $foundImage.ImageIndex
             if ($actualIndex -ne $INDEX) {
-                Write-Log "Index shifted! Expected '$targetName' at $INDEX, but found at $actualIndex." "WARN"
+                Write-Log "Index shifted! Expected '$($targetEdition.Name)' ($($targetEdition.EditionId)) at $INDEX, but found at $actualIndex." "WARN"
                 Write-Log "Automatically adjusting INDEX to $actualIndex."
                 $script:INDEX = $actualIndex
             } else {
-                Write-Log "Edition '$targetName' matched expected index $INDEX."
+                Write-Log "Edition '$($targetEdition.Name)' matched expected index $INDEX."
             }
         } else {
-            Write-Log "Expected edition '$targetName' not found in ISO. Proceeding with literal index $INDEX." "WARN"
+            throw "Expected edition '$($targetEdition.Name)' (EditionId=$($targetEdition.EditionId)) was not found in the ISO. Refusing to build the wrong edition from literal index $INDEX."
         }
     } else {
         Write-Log "No standard mapping for index $INDEX. Proceeding with literal index."

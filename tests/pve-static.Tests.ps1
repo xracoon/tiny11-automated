@@ -9,6 +9,7 @@ $workflowText = Get-Content $workflowPath -Raw
 $deps = Get-Content (Join-Path $root 'config/pve-dependencies.json') -Raw | ConvertFrom-Json
 
 if ($deps.virtio.version -ne '0.1.285-1') { throw 'VirtIO version is not pinned as expected.' }
+if ($deps.virtio.hash -ne '5d01febbecda9177183af22f75532fe4f3e83c6679514cc7e3794c53e81ed8b683e6749f5dc4708c01ebbd81939d6bf8d1d1ddcf840ed22a50348ad32859fd05') { throw 'VirtIO ISO SHA-512 is not pinned as expected.' }
 if ($deps.cloudbase_init.version -ne '1.1.8') { throw 'Cloudbase-Init version is not pinned as expected.' }
 if ($deps.qemu.chocolatey_version -notmatch '^\d+\.\d+\.\d+$') { throw 'QEMU package version must be exact.' }
 
@@ -22,9 +23,14 @@ if ($deps.qemu.chocolatey_version -notmatch '^\d+\.\d+\.\d+$') { throw 'QEMU pac
 @('Set-ZhCnInternationalSettings','Assert-ZhCnSupport','Language.Basic~~~zh-CN~0.0.1.0','InputMethod\CHS','msyh*.ttc','simsun*.ttc','nano11-zh-cn-pve-candidate.qcow2') | ForEach-Object {
     if (-not $nanoText.Contains($_)) { throw "Nano builder is missing zh-CN contract marker: $_" }
 }
+@('EditionId = "Professional"','Refusing to build the wrong edition') | ForEach-Object {
+    if (-not $nanoText.Contains($_)) { throw "Nano builder is missing edition-resolution marker: $_" }
+}
 if ($nanoText.Contains('"*IME-zh-cn*"')) { throw 'Nano builder still removes the zh-CN IME package.' }
 if ($workflowText.Contains('pve-candidate-reusable.yml')) { throw 'Nano workflow must be self-contained.' }
 if (-not $workflowText.Contains('nano11-zh-cn-pve-candidate.qcow2')) { throw 'Nano workflow does not upload the zh-CN candidate.' }
+if (-not $workflowText.Contains('nano11-zh-cn-failure-diagnostics')) { throw 'Nano workflow does not upload failure diagnostics.' }
+if (-not $workflowText.Contains('nano11-zh-cn-intermediate-wim')) { throw 'Nano workflow does not upload retained intermediate WIM files.' }
 foreach ($retired in @('build-tiny11.yml','build-tiny11-core.yml','pve-candidate-reusable.yml','version-matrix-builder.yml','update-stats.yml')) {
     if (Test-Path (Join-Path $root ".github/workflows/$retired")) { throw "Retired workflow still exists: $retired" }
 }

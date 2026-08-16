@@ -28,10 +28,13 @@
 2. 选择 **构建 Nano11 简体中文 PVE 候选镜像**。
 3. 点击 **Run workflow**。
 4. 提供有效的官方 Windows 11 x64 简体中文 ISO URL。
-5. 选择正确的映像索引和虚拟磁盘容量。
+5. 选择版本映射和虚拟磁盘容量。工作流中的常用索引值是版本选择器；例如 `6` 表示 Pro，构建器会通过不受本地化影响的 `EditionId=Professional` 在 zh-CN ISO 中定位实际索引，避免误构建“专业工作站版”。
+6. 建议保留默认启用的 Windows 恢复环境。只有明确追求最小体积且接受失去 WinRE 时才关闭。
 6. 构建完成后下载 `nano11-zh-cn-pve-candidate` Artifact。
 
 工作流完全包含下载、依赖校验、ISO 挂载、Nano 裁剪、PVE 磁盘构建和 Artifact 上传，不再调用多变体 reusable workflow。产物保留 7 天，不发布到 GitHub Releases 或 SourceForge。
+
+构建失败时会上传 `nano11-zh-cn-failure-diagnostics`。如果启动工作流时启用“保留中间文件”，失败后还会上传裁剪后的 `install.wim`（保留 3 天，文件较大）。
 
 Artifact 包含：
 

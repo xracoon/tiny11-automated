@@ -17,13 +17,13 @@ on:
         required: true
         default: '32'
       skip_cleanup:
-        description: 保留中间文件用于诊断
+        description: 失败时保留并上传裁剪后的 install.wim（占用较多存储）
         type: boolean
         default: false
       preserve_winre:
         description: 保留 Windows 恢复环境
         type: boolean
-        default: false
+        default: true
 
 jobs:
   build-nano-zh-cn:
@@ -105,6 +105,42 @@ jobs:
             scripts/nano11-zh-cn-pve-candidate.qcow2.manifest.json
           retention-days: 7
           if-no-files-found: error
+
+      - name: 收集失败诊断信息
+        if: failure()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path .\diagnostics -Force | Out-Null
+          Get-ChildItem .\scripts -Filter 'nano11_*.log' -ErrorAction SilentlyContinue |
+            Copy-Item -Destination .\diagnostics -Force
+          if (Test-Path 'C:\Windows\Logs\DISM\dism.log') {
+            Copy-Item 'C:\Windows\Logs\DISM\dism.log' .\diagnostics\dism.log -Force
+          }
+          Get-FileHash .\virtio-win.iso -Algorithm SHA512 -ErrorAction SilentlyContinue |
+            Format-List | Out-File .\diagnostics\dependency-hashes.txt
+          Get-FileHash .\CloudbaseInitSetup.msi -Algorithm SHA256 -ErrorAction SilentlyContinue |
+            Format-List | Out-File .\diagnostics\dependency-hashes.txt -Append
+          Get-ChildItem .\scripts -Force | Select-Object Name, Length, LastWriteTime |
+            Format-Table -AutoSize | Out-File .\diagnostics\scripts-files.txt
+
+      - name: 上传失败诊断包
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nano11-zh-cn-failure-diagnostics
+          path: diagnostics/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: 上传保留的中间 WIM
+        if: failure() && inputs.skip_cleanup
+        uses: actions/upload-artifact@v4
+        with:
+          name: nano11-zh-cn-intermediate-wim
+          path: scripts/nano11/sources/install.wim
+          retention-days: 3
+          compression-level: 0
+          if-no-files-found: warn
 
       - name: 卸载 Windows 源镜像
         if: always()
