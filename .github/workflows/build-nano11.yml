@@ -19,7 +19,7 @@ on:
       skip_cleanup:
         description: 失败时保留并上传裁剪后的 install.wim（占用较多存储）
         type: boolean
-        default: false
+        default: true
       preserve_winre:
         description: 保留 Windows 恢复环境
         type: boolean
@@ -54,8 +54,19 @@ jobs:
         run: |
           $deps = Get-Content .\config\pve-dependencies.json -Raw | ConvertFrom-Json
           aria2c --max-connection-per-server=16 --split=16 --continue=true --allow-overwrite=true --auto-file-renaming=false --out=windows-zh-cn.iso $env:SOURCE_ISO_URL
-          Invoke-WebRequest -Uri $deps.virtio.url -OutFile virtio-win.iso
-          Invoke-WebRequest -Uri $deps.cloudbase_init.url -OutFile CloudbaseInitSetup.msi
+          curl.exe --fail --location --retry 3 --retry-all-errors --output virtio-win.iso $deps.virtio.url
+          if ($LASTEXITCODE -ne 0) { throw 'VirtIO ISO 下载失败。' }
+          curl.exe --fail --location --retry 3 --retry-all-errors --output CloudbaseInitSetup.msi $deps.cloudbase_init.url
+          if ($LASTEXITCODE -ne 0) { throw 'Cloudbase-Init 下载失败。' }
+          foreach ($item in @(
+            @{ Path = '.\virtio-win.iso'; Dependency = $deps.virtio },
+            @{ Path = '.\CloudbaseInitSetup.msi'; Dependency = $deps.cloudbase_init }
+          )) {
+            $actualHash = (Get-FileHash $item.Path -Algorithm $item.Dependency.hash_algorithm).Hash
+            if ($actualHash -ine $item.Dependency.hash) {
+              throw "依赖校验失败：$($item.Path)，期望 $($item.Dependency.hash)，实际 $actualHash。"
+            }
+          }
 
       - name: 挂载 Windows 简体中文源镜像
         shell: pwsh

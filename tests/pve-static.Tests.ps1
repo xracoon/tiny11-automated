@@ -9,7 +9,8 @@ $workflowText = Get-Content $workflowPath -Raw
 $deps = Get-Content (Join-Path $root 'config/pve-dependencies.json') -Raw | ConvertFrom-Json
 
 if ($deps.virtio.version -ne '0.1.285-1') { throw 'VirtIO version is not pinned as expected.' }
-if ($deps.virtio.hash -ne '5d01febbecda9177183af22f75532fe4f3e83c6679514cc7e3794c53e81ed8b683e6749f5dc4708c01ebbd81939d6bf8d1d1ddcf840ed22a50348ad32859fd05') { throw 'VirtIO ISO SHA-512 is not pinned as expected.' }
+if ($deps.virtio.url -notmatch '/virtio-win-0\.1\.285\.iso$') { throw 'VirtIO URL must use the versioned ISO filename.' }
+if ($deps.virtio.hash -ne '4f13070cc9241fa342deab4ebfac360565030580ff77b6e5f1951a64627621e5da4abfd30e1e46ca8bae2bb7dd4ff98141aff424142c9629a5876a61283962e5') { throw 'VirtIO ISO SHA-512 is not pinned as expected.' }
 if ($deps.cloudbase_init.version -ne '1.1.8') { throw 'Cloudbase-Init version is not pinned as expected.' }
 if ($deps.qemu.chocolatey_version -notmatch '^\d+\.\d+\.\d+$') { throw 'QEMU package version must be exact.' }
 

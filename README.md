@@ -34,7 +34,7 @@
 
 工作流完全包含下载、依赖校验、ISO 挂载、Nano 裁剪、PVE 磁盘构建和 Artifact 上传，不再调用多变体 reusable workflow。产物保留 7 天，不发布到 GitHub Releases 或 SourceForge。
 
-构建失败时会上传 `nano11-zh-cn-failure-diagnostics`。如果启动工作流时启用“保留中间文件”，失败后还会上传裁剪后的 `install.wim`（保留 3 天，文件较大）。
+构建失败时会上传 `nano11-zh-cn-failure-diagnostics`。“保留中间文件”默认启用，失败后还会上传裁剪后的 `install.wim`（保留 3 天，文件较大）；存储空间受限时可以手动关闭。
 
 Artifact 包含：
 

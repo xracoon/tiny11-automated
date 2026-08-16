@@ -254,13 +254,19 @@ function Resolve-ImageIndex {
     $targetEdition = $expectedEditions[$INDEX]
     
     if ($targetEdition) {
-        $foundImage = $images | Where-Object { $_.EditionId -eq $targetEdition.EditionId } | Select-Object -First 1
+        $foundImage = $images | Where-Object {
+            $editionProperty = $_.PSObject.Properties['EditionId']
+            $editionProperty -and $editionProperty.Value -eq $targetEdition.EditionId
+        } | Select-Object -First 1
         if (-not $foundImage) {
             # Some DISM builds omit EditionId from the summary list. Query each
             # image in detail instead of falling back to a localized name.
             $foundImage = $images | ForEach-Object {
                 Get-WindowsImage -ImagePath $sourceImagePath -Index $_.ImageIndex
-            } | Where-Object { $_.EditionId -eq $targetEdition.EditionId } | Select-Object -First 1
+            } | Where-Object {
+                $editionProperty = $_.PSObject.Properties['EditionId']
+                $editionProperty -and $editionProperty.Value -eq $targetEdition.EditionId
+            } | Select-Object -First 1
         }
         if ($foundImage) {
             $actualIndex = $foundImage.ImageIndex
