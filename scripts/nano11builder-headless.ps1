@@ -76,7 +76,7 @@ $DriveLetter = $ISO + ":"
 $wimFilePath = "$ScratchDisk\nano11\sources\install.wim"
 $scratchDir = "$ScratchDisk\scratchdir"
 $nano11Dir = "$ScratchDisk\nano11"
-$outputISO = "$PSScriptRoot\nano11-pve-candidate.qcow2"
+$outputISO = "$PSScriptRoot\nano11-zh-cn-pve-candidate.qcow2"
 $logFile = "$PSScriptRoot\nano11_$(Get-Date -Format yyyyMMdd_HHmmss).log"
 Import-Module (Join-Path $PSScriptRoot 'modules\PveTemplateBuilder\PveTemplateBuilder.psd1') -Force
 
@@ -371,19 +371,21 @@ function Get-ImageMetadata {
 
     # Get language
     $imageIntl = & dism /English /Get-Intl "/Image:$scratchDir"
-    $languageLine = $imageIntl -split '\n' | Where-Object { $_ -match 'Default system UI language : ([a-zA-Z]{2}-[a-zA-Z]{2})' }
+    $languageMatch = [regex]::Match(($imageIntl -join "`n"), 'Default system UI language\s*:\s*([a-zA-Z]{2}-[a-zA-Z]{2})', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
 
-    if ($languageLine) {
-        $script:languageCode = $Matches[1]
-        Write-Log "Language: $script:languageCode"
-    } else {
-        Write-Log "Language code not found, using default" "WARN"
-        $script:languageCode = "en-US"
+    if (-not $languageMatch.Success) {
+        throw 'Unable to detect the default system UI language. A native zh-CN Windows 11 x64 ISO is required.'
+    }
+    $script:languageCode = $languageMatch.Groups[1].Value
+    Write-Log "Language: $script:languageCode"
+    if ($script:languageCode -ine 'zh-CN') {
+        throw "Selected image index uses '$script:languageCode'. This branch requires a native zh-CN Windows 11 x64 image."
     }
 
     # Get architecture
     $imageInfo = & dism /English /Get-WimInfo "/wimFile:$wimFilePath" "/index:$INDEX"
     $lines = $imageInfo -split '\r?\n'
+    $script:architecture = $null
 
     foreach ($line in $lines) {
         if ($line -like '*Architecture : *') {
@@ -397,9 +399,53 @@ function Get-ImageMetadata {
     }
 
     if (-not $script:architecture) {
-        Write-Log "Architecture not found, defaulting to amd64" "WARN"
-        $script:architecture = 'amd64'
+        throw 'Unable to detect image architecture. A native zh-CN Windows 11 x64 image is required.'
     }
+    if ($script:architecture -ne 'amd64') {
+        throw "Selected image architecture is '$script:architecture'. This branch requires x64/amd64."
+    }
+}
+
+function Set-ZhCnInternationalSettings {
+    Write-Log "Setting offline international defaults to zh-CN..."
+    foreach ($option in @('/Set-AllIntl:zh-CN', '/Set-SysUILang:zh-CN')) {
+        & dism /English "/Image:$scratchDir" $option 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "DISM international setting failed: $option (exit code $LASTEXITCODE)"
+        }
+    }
+    Write-Log "Offline international defaults set to zh-CN"
+}
+
+function Assert-ZhCnSupport {
+    param([string]$Phase)
+    Write-Log "Validating zh-CN support ($Phase)..."
+
+    $intl = (& dism /English /Get-Intl "/Image:$scratchDir" 2>&1) -join "`n"
+    if ($LASTEXITCODE -ne 0) { throw "DISM /Get-Intl failed during $Phase validation." }
+    if ($intl -notmatch '(?im)Default system UI language\s*:\s*zh-CN') {
+        throw "Default system UI language is not zh-CN during $Phase validation."
+    }
+    if ($intl -notmatch '(?im)System locale\s*:\s*zh-CN') {
+        throw "System locale is not zh-CN during $Phase validation."
+    }
+    if ($intl -notmatch '(?im)Active keyboard\(s\)\s*:[^\r\n]*0804:') {
+        throw "No active Simplified Chinese input profile was found during $Phase validation."
+    }
+
+    $basic = Get-WindowsCapability -Path $scratchDir -Name 'Language.Basic~~~zh-CN~0.0.1.0' -ErrorAction Stop
+    if ($basic.State -ne 'Installed') {
+        throw "Language.Basic zh-CN is not installed during $Phase validation."
+    }
+    if (-not (Test-Path "$scratchDir\Windows\System32\InputMethod\CHS")) {
+        throw "The CHS input method directory is missing during $Phase validation."
+    }
+    foreach ($fontPattern in @('msyh*.ttc', 'simsun*.ttc')) {
+        if (-not (Get-ChildItem "$scratchDir\Windows\Fonts" -Filter $fontPattern -File -ErrorAction SilentlyContinue | Select-Object -First 1)) {
+            throw "Required Simplified Chinese font is missing during $Phase validation: $fontPattern"
+        }
+    }
+    Write-Log "zh-CN support validated ($Phase)"
 }
 
 #---------[ Nano11-Specific Removal Functions ]---------#
@@ -503,7 +549,6 @@ function Remove-SystemPackages {
         "Microsoft-Windows-LanguageFeatures-TextToSpeech-$($script:languageCode)-Package~",
         "*IME-ja-jp*",
         "*IME-ko-kr*",
-        "*IME-zh-cn*",
         "*IME-zh-tw*",
         
         # Core OS Features
@@ -588,25 +633,24 @@ function Slim-DriverStore {
 }
 
 function Reduce-Fonts {
-    Write-Log "Reducing fonts (keeping only essentials)..."
+    Write-Log "Reducing fonts while preserving Simplified Chinese essentials..."
     
     $fontsPath = "$scratchDir\Windows\Fonts"
     if (Test-Path $fontsPath) {
         # Keep essential fonts, remove the rest
-        Get-ChildItem -Path $fontsPath -Exclude "segoe*.*", "tahoma*.*", "marlett.ttf", "8541oem.fon", "segui*.*", "consol*.*", "lucon*.*", "calibri*.*", "arial*.*", "times*.*", "cou*.*", "8*.*" -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        Get-ChildItem -Path $fontsPath -Exclude "segoe*.*", "tahoma*.*", "marlett.ttf", "8541oem.fon", "segui*.*", "consol*.*", "lucon*.*", "calibri*.*", "arial*.*", "times*.*", "cou*.*", "8*.*", "msyh*.*", "simsun*.*", "simhei*.*", "simfang*.*", "simkai*.*", "deng*.*" -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
         
         # Remove CJK fonts explicitly
-        Get-ChildItem -Path $fontsPath -Include "mingli*", "msjh*", "msyh*", "malgun*", "meiryo*", "yugoth*", "segoeuihistoric.ttf" -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        Get-ChildItem -Path $fontsPath -Include "mingli*", "msjh*", "malgun*", "meiryo*", "yugoth*", "segoeuihistoric.ttf" -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     Write-Log "Fonts reduced"
 }
 
 function Clean-InputMethods {
-    Write-Log "Cleaning input methods (removing CJK)..."
+    Write-Log "Cleaning non-Simplified-Chinese input methods while preserving CHS..."
     
     $inputMethodPaths = @(
-        "$scratchDir\Windows\System32\InputMethod\CHS",
         "$scratchDir\Windows\System32\InputMethod\CHT",
         "$scratchDir\Windows\System32\InputMethod\JPN",
         "$scratchDir\Windows\System32\InputMethod\KOR"
@@ -618,7 +662,7 @@ function Clean-InputMethods {
         }
     }
 
-    Write-Log "Input methods cleaned"
+    Write-Log "Non-CHS input methods cleaned"
 }
 
 function Remove-MiscellaneousFiles {
@@ -1440,6 +1484,8 @@ try {
     Mount-WindowsImageFile
     Take-OwnershipOfFolders
     Get-ImageMetadata
+    Set-ZhCnInternationalSettings
+    Assert-ZhCnSupport -Phase 'before pruning'
 
     # Customization phase
     Remove-BloatwareApps
@@ -1470,11 +1516,12 @@ try {
 
     # WinSxS optimization
     Optimize-WinSxS
+    Assert-ZhCnSupport -Phase 'final offline image'
 
     # Finalization phase
     Dismount-AndExport
     # VirtIO injection deliberately happens after Nano DriverStore pruning.
-    New-PveCandidateTemplate -ImagePath $wimFilePath -ImageIndex 1 -Variant nano -OutputPath $outputISO `
+    New-PveCandidateTemplate -ImagePath $wimFilePath -ImageIndex 1 -Variant nano -Language 'zh-CN' -OutputPath $outputISO `
         -VirtioIsoPath $VirtioISOPath -CloudbaseInitMsiPath $CloudbaseInitMSIPath `
         -DependencyManifestPath $PveDependenciesPath -QemuImgPath $QemuImgPath -DiskSizeGB $DiskSizeGB | Out-Null
 

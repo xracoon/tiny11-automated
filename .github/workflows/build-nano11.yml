@@ -1,37 +1,114 @@
-name: Build Nano11 PVE Candidate
+name: 构建 Nano11 简体中文 PVE 候选镜像
 
 on:
   workflow_dispatch:
     inputs:
       windows_iso_url:
-        description: Official Windows 11 x64 ISO URL
+        description: 官方 Windows 11 x64 简体中文（zh-CN）ISO 下载地址
         required: true
       image_index:
-        description: Windows image index
+        description: Windows 映像索引
         required: true
         default: '6'
         type: choice
         options: ['1', '4', '6', '7']
       disk_size_gb:
-        description: Virtual disk size in GiB
+        description: 虚拟磁盘容量（GiB）
         required: true
         default: '32'
       skip_cleanup:
-        description: Keep intermediate files for diagnosis
+        description: 保留中间文件用于诊断
         type: boolean
         default: false
       preserve_winre:
-        description: Preserve WinRE
+        description: 保留 Windows 恢复环境
         type: boolean
         default: false
 
 jobs:
-  build:
-    uses: ./.github/workflows/pve-candidate-reusable.yml
-    with:
-      variant: nano
-      windows_iso_url: ${{ inputs.windows_iso_url }}
-      image_index: ${{ inputs.image_index }}
-      disk_size_gb: ${{ inputs.disk_size_gb }}
-      skip_cleanup: ${{ inputs.skip_cleanup }}
-      preserve_winre: ${{ inputs.preserve_winre }}
+  build-nano-zh-cn:
+    name: Nano11 zh-CN PVE candidate
+    runs-on: windows-latest
+    timeout-minutes: 480
+    permissions:
+      contents: read
+    env:
+      POWERSHELL_TELEMETRY_OPTOUT: '1'
+      SOURCE_ISO_URL: ${{ inputs.windows_iso_url }}
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 安装固定版本构建工具
+        shell: pwsh
+        run: |
+          $deps = Get-Content .\config\pve-dependencies.json -Raw | ConvertFrom-Json
+          choco install aria2 -y --no-progress
+          choco install qemu --version $deps.qemu.chocolatey_version -y --no-progress
+          $qemuImg = Get-ChildItem 'C:\Program Files\qemu' -Filter qemu-img.exe -Recurse | Select-Object -First 1
+          if (-not $qemuImg) { throw '固定版本 qemu-img.exe 安装失败。' }
+          "QEMU_IMG=$($qemuImg.FullName)" | Out-File $env:GITHUB_ENV -Append
+
+      - name: 下载 Windows ISO 和固定版本依赖
+        shell: pwsh
+        run: |
+          $deps = Get-Content .\config\pve-dependencies.json -Raw | ConvertFrom-Json
+          aria2c --max-connection-per-server=16 --split=16 --continue=true --allow-overwrite=true --auto-file-renaming=false --out=windows-zh-cn.iso $env:SOURCE_ISO_URL
+          Invoke-WebRequest -Uri $deps.virtio.url -OutFile virtio-win.iso
+          Invoke-WebRequest -Uri $deps.cloudbase_init.url -OutFile CloudbaseInitSetup.msi
+
+      - name: 挂载 Windows 简体中文源镜像
+        shell: pwsh
+        run: |
+          $image = Mount-DiskImage -ImagePath (Resolve-Path .\windows-zh-cn.iso) -PassThru
+          $drive = ($image | Get-Volume).DriveLetter
+          if (-not $drive) { throw 'Windows ISO 挂载后没有获得驱动器号。' }
+          "WINDOWS_ISO_DRIVE=$drive" | Out-File $env:GITHUB_ENV -Append
+
+      - name: 构建 Nano11 简体中文 QCOW2 候选镜像
+        shell: pwsh
+        run: |
+          Set-ExecutionPolicy Bypass -Scope Process -Force
+          $params = @{
+            ISO = $env:WINDOWS_ISO_DRIVE
+            INDEX = [int]'${{ inputs.image_index }}'
+            DiskSizeGB = [int]'${{ inputs.disk_size_gb }}'
+            VirtioISOPath = (Resolve-Path .\virtio-win.iso).Path
+            CloudbaseInitMSIPath = (Resolve-Path .\CloudbaseInitSetup.msi).Path
+            QemuImgPath = $env:QEMU_IMG
+          }
+          if ('${{ inputs.skip_cleanup }}' -eq 'true') { $params.SkipCleanup = $true }
+          if ('${{ inputs.preserve_winre }}' -eq 'true') { $params.PreserveWinRE = $true }
+          .\scripts\nano11builder-headless.ps1 @params
+          if ($LASTEXITCODE -ne 0) { throw "Nano11 构建器退出码为 $LASTEXITCODE。" }
+
+      - name: 验证候选镜像静态元数据
+        shell: pwsh
+        run: |
+          $candidate = Get-Item .\scripts\nano11-zh-cn-pve-candidate.qcow2
+          $manifest = Get-Content "$($candidate.FullName).manifest.json" -Raw | ConvertFrom-Json
+          if ($manifest.target -ne 'Proxmox VE 8.4/9.x' -or $manifest.validation_level -ne 'static-only') { throw '候选镜像目标或验证等级错误。' }
+          if ($manifest.runtime_validated -ne $false -or $manifest.hardware_validated -ne $false) { throw '候选镜像不得声明已完成运行时或硬件验证。' }
+          if ($manifest.language -ne 'zh-CN') { throw '候选镜像清单未声明 zh-CN。' }
+          $expected = @('ui', 'microsoft-pinyin', 'basic-fonts', 'basic-language-features')
+          foreach ($feature in $expected) {
+            if ($feature -notin $manifest.chinese_support) { throw "候选镜像缺少中文能力声明：$feature" }
+          }
+
+      - name: 上传 Nano11 简体中文候选产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: nano11-zh-cn-pve-candidate
+          path: |
+            scripts/nano11-zh-cn-pve-candidate.qcow2
+            scripts/nano11-zh-cn-pve-candidate.qcow2.sha256
+            scripts/nano11-zh-cn-pve-candidate.qcow2.manifest.json
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: 卸载 Windows 源镜像
+        if: always()
+        shell: pwsh
+        run: |
+          $iso = Join-Path $PWD 'windows-zh-cn.iso'
+          if (Test-Path $iso) { Dismount-DiskImage -ImagePath $iso -ErrorAction SilentlyContinue }

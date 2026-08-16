@@ -1,37 +1,35 @@
-# Proxmox VE candidate images
+# Nano11 zh-CN 的 Proxmox VE 验收
 
-This branch keeps the original Standard, Core, and Nano build entry points, but their final product is a compressed `*-candidate.qcow2` instead of an installer ISO. Shared PVE work lives in `PveTemplateBuilder`; Nano is not the baseline and receives VirtIO drivers only after its DriverStore pruning.
+本分支输出 `nano11-zh-cn-pve-candidate.qcow2`。构建阶段只证明映像具有预期静态结构，不证明它已经在真实 PVE 节点或 N5105 上启动。
 
-## What the build does
+## 推荐虚拟机配置
 
-- Creates a 32 GiB expandable GPT disk by default: 260 MiB EFI, 16 MiB MSR, and an NTFS Windows partition.
-- Applies the single-index customized WIM with DISM `/Compact`, creates UEFI boot files, then converts VHDX to compressed QCOW2.
-- Injects only W11 x64 `vioscsi`, `viostor`, `NetKVM`, `Balloon`, `vioserial`, `pvpanic`, and `viorng` drivers from the pinned VirtIO ISO.
-- Stages the pinned QEMU Guest Agent and Cloudbase-Init installers for `SetupComplete.cmd`. Cloudbase-Init uses ConfigDrive2 and accepts a password supplied by PVE cloud-init; the image contains no fixed password.
-- Disables Fast Startup and omits the upstream desktop/gaming/HAGS/TCP tuning profile.
-- Runs `qemu-img check`, validates format and virtual size, and emits SHA-256 plus a JSON manifest.
+- Q35、OVMF、预置 Secure Boot 密钥
+- VirtIO SCSI single，IO thread 和 discard 开启
+- VirtIO 网卡、balloon、QEMU Agent
+- ConfigDrive2 cloud-init 磁盘
+- TPM 2.0 可选
+- 普通 PVE 虚拟显示，不配置 GPU 共享或 Intel GPU 客体驱动
 
-The manifest deliberately says `static-only`, `runtime_validated: false`, and `hardware_validated: false`. GitHub-hosted runners cannot prove boot behavior on your PVE node or N5105 hardware.
-
-## Recommended VM profile
-
-Use Q35, OVMF with pre-enrolled Secure Boot keys, VirtIO SCSI single, IO thread, discard, VirtIO NIC, ballooning, QEMU Agent, and ConfigDrive2. TPM 2.0 is optional. The included import helper applies this profile:
+可以使用仓库的导入工具：
 
 ```bash
-sudo ./scripts/import-pve-template.sh 120 ./nano11-pve-candidate.qcow2 local-lvm vmbr0 nano11
+sudo ./scripts/import-pve-template.sh 120 ./nano11-zh-cn-pve-candidate.qcow2 local-lvm vmbr0 nano11-zh-cn
 ```
 
-The helper verifies the checksum before creating the VM and resolves the volume name reported by `qm importdisk` instead of assuming a disk number.
+工具会先验证 SHA-256，再创建和配置虚拟机。它不会把“成功导入”当作“成功启动”。
 
-## Required runtime validation on the actual PVE node
+## 必须在真实节点执行的验收
 
-1. Boot with Secure Boot enabled and confirm Windows completes first boot without repair mode.
-2. Confirm Device Manager has no missing boot-storage or network devices.
-3. Confirm `QEMU-GA` and `cloudbase-init` exist and run; inspect `%WINDIR%\Temp\pve-firstboot.log` and MSI logs on failure.
-4. Set hostname, DHCP/static networking, and a temporary password through PVE cloud-init; verify they arrive through ConfigDrive2.
-5. Verify PVE reports the guest IP and agent state, then test clean shutdown, snapshot restore, clone, discard/TRIM, ballooning, and disk expansion.
-6. Repeat the checklist for every Windows build and every Standard/Core/Nano variant you intend to use.
+1. 开启 Secure Boot 启动，确认 Windows 完成首次启动且没有进入修复模式。
+2. 确认首次界面和系统 UI 为简体中文，没有明显英文回退。
+3. 切换微软拼音并实际输入中文；检查微软雅黑、宋体文本没有方框或乱码。
+4. 在设备管理器确认启动存储和网卡没有缺失驱动。
+5. 确认 `QEMU-GA` 与 `cloudbase-init` 服务存在并运行；失败时检查 `%WINDIR%\Temp\pve-firstboot.log` 和 MSI 日志。
+6. 通过 ConfigDrive2 下发主机名、网络配置和临时密码并验证生效；镜像自身不得包含固定密码。
+7. 在 PVE 侧验证 Agent IP、正常关机、快照恢复、克隆、discard/TRIM、balloon 和磁盘扩容。
+8. 对每个计划使用的 Windows 构建号和映像索引重复验收。
 
-## N5105 graphics boundary
+## N5105 范围
 
-This branch does not configure GPU sharing, SR-IOV, mediated devices/GVT-g, PCI passthrough, or Intel GPU guest drivers. Display remains the ordinary PVE virtual display. Any future GPU experiment must be a separately documented host/guest test and must not be advertised as supported based only on a successful image build.
+验收只覆盖普通虚拟显示。GPU 共享、SR-IOV、GVT-g 和 PCI 直通均不属于本分支支持范围；没有真实硬件测试时不得将它们标为受支持。

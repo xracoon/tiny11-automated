@@ -2,7 +2,7 @@
 # Author: kelexine (https://github.com/kelexine)
 # Fires every Sunday at 02:00 UTC via cron, or on-demand via workflow_dispatch.
 # Derives builds_completed / builds_failed from the real GitHub Actions API
-# (last 7 days of build-nano11, build-tiny11, build-tiny11-core runs) instead
+# (last 7 days of the Nano11 zh-CN build workflow) instead
 # of the previous hardcoded placeholders.
 
 name: Weekly Summary
@@ -48,11 +48,7 @@ jobs:
               "X-GitHub-Api-Version": "2022-11-28",
           }
 
-          build_workflows = [
-              "build-nano11.yml",
-              "build-tiny11.yml",
-              "build-tiny11-core.yml",
-          ]
+          build_workflows = ["build-nano11.yml"]
 
           completed = 0
           failed    = 0

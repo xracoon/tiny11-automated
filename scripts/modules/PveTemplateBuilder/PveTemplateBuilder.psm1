@@ -105,6 +105,7 @@ function New-PveCandidateTemplate {
         [Parameter(Mandatory)][string]$CloudbaseInitMsiPath,
         [Parameter(Mandatory)][string]$DependencyManifestPath,
         [Parameter(Mandatory)][string]$QemuImgPath,
+        [ValidateSet('zh-CN')][string]$Language = 'zh-CN',
         [ValidateRange(16, 2048)][int]$DiskSizeGB = 32,
         [int]$ImageIndex = 1
     )
@@ -177,8 +178,9 @@ function New-PveCandidateTemplate {
     "$sha256  $([IO.Path]::GetFileName($OutputPath))" | Set-Content -LiteralPath "$OutputPath.sha256" -Encoding Ascii
     [ordered]@{
         schema_version = 1; artifact = [IO.Path]::GetFileName($OutputPath); sha256 = $sha256
-        variant = $Variant; target = 'Proxmox VE 8.4/9.x'; validation_level = 'static-only'
+        variant = $Variant; language = $Language; target = 'Proxmox VE 8.4/9.x'; validation_level = 'static-only'
         runtime_validated = $false; hardware_validated = $false; disk_size_gib = $DiskSizeGB
+        chinese_support = @('ui', 'microsoft-pinyin', 'basic-fonts', 'basic-language-features')
         firmware = 'OVMF (UEFI)'; machine = 'q35'; secure_boot_compatible = $true
         recommended = [ordered]@{ scsi_controller = 'VirtIO SCSI single'; iothread = $true; discard = $true; nic = 'VirtIO'; balloon = $true; qemu_agent = $true; cloud_init = 'ConfigDrive2'; tpm = 'optional' }
         gpu_sharing = [ordered]@{ integrated = $false; note = 'No N5105/Jasper Lake GPU sharing, SR-IOV, GVT-g, or Intel GPU driver integration.' }

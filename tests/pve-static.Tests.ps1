@@ -2,6 +2,10 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $module = Join-Path $root 'scripts/modules/PveTemplateBuilder/PveTemplateBuilder.psm1'
 $moduleText = Get-Content $module -Raw
+$nanoPath = Join-Path $root 'scripts/nano11builder-headless.ps1'
+$nanoText = Get-Content $nanoPath -Raw
+$workflowPath = Join-Path $root '.github/workflows/build-nano11.yml'
+$workflowText = Get-Content $workflowPath -Raw
 $deps = Get-Content (Join-Path $root 'config/pve-dependencies.json') -Raw | ConvertFrom-Json
 
 if ($deps.virtio.version -ne '0.1.285-1') { throw 'VirtIO version is not pinned as expected.' }
@@ -11,15 +15,18 @@ if ($deps.qemu.chocolatey_version -notmatch '^\d+\.\d+\.\d+$') { throw 'QEMU pac
 @('vioscsi','viostor','NetKVM','Balloon','vioserial','pvpanic','viorng') | ForEach-Object {
     if ($_ -notin $deps.virtio.drivers) { throw "Missing required VirtIO driver: $_" }
 }
-@('static-only','runtime_validated = $false','hardware_validated = $false','ConfigDrive2','q35') | ForEach-Object {
+@('static-only','runtime_validated = $false','hardware_validated = $false','ConfigDrive2','q35',"language = `$Language",'microsoft-pinyin') | ForEach-Object {
     if (-not $moduleText.Contains($_)) { throw "Module is missing required marker: $_" }
 }
 
-$builders = @('tiny11maker-headless.ps1','tiny11coremaker-headless.ps1','nano11builder-headless.ps1')
-foreach ($builder in $builders) {
-    $text = Get-Content (Join-Path $root "scripts/$builder") -Raw
-    if (-not $text.Contains('New-PveCandidateTemplate')) { throw "$builder is not connected to the shared PVE module." }
-    if ($text -notmatch '-candidate\.qcow2') { throw "$builder does not produce a candidate QCOW2 name." }
+@('Set-ZhCnInternationalSettings','Assert-ZhCnSupport','Language.Basic~~~zh-CN~0.0.1.0','InputMethod\CHS','msyh*.ttc','simsun*.ttc','nano11-zh-cn-pve-candidate.qcow2') | ForEach-Object {
+    if (-not $nanoText.Contains($_)) { throw "Nano builder is missing zh-CN contract marker: $_" }
+}
+if ($nanoText.Contains('"*IME-zh-cn*"')) { throw 'Nano builder still removes the zh-CN IME package.' }
+if ($workflowText.Contains('pve-candidate-reusable.yml')) { throw 'Nano workflow must be self-contained.' }
+if (-not $workflowText.Contains('nano11-zh-cn-pve-candidate.qcow2')) { throw 'Nano workflow does not upload the zh-CN candidate.' }
+foreach ($retired in @('build-tiny11.yml','build-tiny11-core.yml','pve-candidate-reusable.yml','version-matrix-builder.yml','update-stats.yml')) {
+    if (Test-Path (Join-Path $root ".github/workflows/$retired")) { throw "Retired workflow still exists: $retired" }
 }
 
-Write-Output 'PVE static contract checks passed.'
+Write-Output 'Nano11 zh-CN PVE static contract checks passed.'
