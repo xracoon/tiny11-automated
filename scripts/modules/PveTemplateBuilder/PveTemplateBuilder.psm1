@@ -5,7 +5,9 @@ function Invoke-NativeChecked {
     param([string]$FilePath, [string[]]$ArgumentList)
     & $FilePath @ArgumentList
     if ($LASTEXITCODE -ne 0) {
-        throw "$FilePath failed with exit code $LASTEXITCODE"
+        $unsignedExitCode = [uint32]([int64]$LASTEXITCODE -band 0xffffffffL)
+        $hexExitCode = '0x{0:X8}' -f $unsignedExitCode
+        throw "$FilePath $($ArgumentList -join ' ') failed with exit code $LASTEXITCODE ($hexExitCode)"
     }
 }
 
@@ -150,7 +152,9 @@ function New-PveCandidateTemplate {
         @("select vdisk file=`"$vhdxPath`"", 'detach vdisk') | Set-Content -LiteralPath (Join-Path $workRoot 'detach.txt') -Encoding Ascii
         Invoke-NativeChecked diskpart.exe @('/s', $diskpartScript)
         $mountedVhd = $true
-        Invoke-NativeChecked dism.exe @('/English', '/Apply-Image', "/ImageFile:$ImagePath", "/Index:$ImageIndex", "/ApplyDir:$windowsLetter`:\", '/Compact')
+        # GitHub-hosted runners can reject CompactOS application to an attached
+        # dynamic VHDX with 0xC144013B. qemu-img compresses the final QCOW2.
+        Invoke-NativeChecked dism.exe @('/English', '/Apply-Image', "/ImageFile:$ImagePath", "/Index:$ImageIndex", "/ApplyDir:$windowsLetter`:\")
         Invoke-NativeChecked bcdboot.exe @("$windowsLetter`:\Windows", '/s', "$efiLetter`:", '/f', 'UEFI')
         Invoke-NativeChecked diskpart.exe @('/s', (Join-Path $workRoot 'detach.txt'))
         $mountedVhd = $false

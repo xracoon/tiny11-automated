@@ -27,7 +27,7 @@ Each candidate uses:
 - Secure Boot-compatible EFI layout
 - dynamic 32 GiB virtual disk by default
 - GPT with 260 MiB EFI, 16 MiB MSR, and the remaining space as NTFS
-- DISM `/Apply-Image /Compact`
+- standard DISM image application; final QCOW2 compression is handled by `qemu-img` without requiring host WOF/CompactOS support
 - compressed QCOW2 output
 - VirtIO SCSI single, IO thread, and discard as the recommended disk configuration
 - VirtIO network adapter
@@ -71,6 +71,8 @@ To build:
 6. Download the resulting Actions Artifact.
 
 The three public workflows call `.github/workflows/pve-candidate-reusable.yml`. PVE candidates are uploaded only as GitHub Actions Artifacts with seven-day retention. This branch does not publish them to GitHub Releases or SourceForge.
+
+On failure, the reusable workflow uploads a small diagnostic artifact containing builder logs, DISM logs, dependency hashes, and a file inventory. `Keep intermediate files` and `Preserve WinRE` remain unchecked by default. If intermediate retention is explicitly enabled, the failed run also uploads the modified `install.wim` for three days.
 
 Each artifact contains:
 

@@ -51,8 +51,19 @@ jobs:
         run: |
           $deps = Get-Content .\config\pve-dependencies.json -Raw | ConvertFrom-Json
           aria2c --max-connection-per-server=16 --split=16 --continue=true --allow-overwrite=true --auto-file-renaming=false --out=windows.iso '${{ inputs.windows_iso_url }}'
-          Invoke-WebRequest -Uri $deps.virtio.url -OutFile virtio-win.iso
-          Invoke-WebRequest -Uri $deps.cloudbase_init.url -OutFile CloudbaseInitSetup.msi
+          curl.exe --fail --location --retry 3 --retry-all-errors --output virtio-win.iso $deps.virtio.url
+          if ($LASTEXITCODE -ne 0) { throw 'VirtIO ISO download failed.' }
+          curl.exe --fail --location --retry 3 --retry-all-errors --output CloudbaseInitSetup.msi $deps.cloudbase_init.url
+          if ($LASTEXITCODE -ne 0) { throw 'Cloudbase-Init download failed.' }
+          foreach ($item in @(
+            @{ Path = '.\virtio-win.iso'; Dependency = $deps.virtio },
+            @{ Path = '.\CloudbaseInitSetup.msi'; Dependency = $deps.cloudbase_init }
+          )) {
+            $actualHash = (Get-FileHash $item.Path -Algorithm $item.Dependency.hash_algorithm).Hash
+            if ($actualHash -ine $item.Dependency.hash) {
+              throw "Dependency checksum mismatch for $($item.Path). Expected $($item.Dependency.hash), got $actualHash."
+            }
+          }
 
       - name: Mount Windows source
         shell: pwsh
@@ -104,3 +115,48 @@ jobs:
             scripts/*-candidate.qcow2.manifest.json
           retention-days: 7
           if-no-files-found: error
+
+      - name: Collect failure diagnostics
+        if: failure()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path .\diagnostics -Force | Out-Null
+          Get-ChildItem .\scripts -Filter '*.log' -ErrorAction SilentlyContinue |
+            Copy-Item -Destination .\diagnostics -Force
+          if (Test-Path 'C:\Windows\Logs\DISM\dism.log') {
+            Copy-Item 'C:\Windows\Logs\DISM\dism.log' .\diagnostics\dism.log -Force
+          }
+          Get-FileHash .\virtio-win.iso -Algorithm SHA512 -ErrorAction SilentlyContinue |
+            Format-List | Out-File .\diagnostics\dependency-hashes.txt
+          Get-FileHash .\CloudbaseInitSetup.msi -Algorithm SHA256 -ErrorAction SilentlyContinue |
+            Format-List | Out-File .\diagnostics\dependency-hashes.txt -Append
+          Get-ChildItem .\scripts -Force | Select-Object Name, Length, LastWriteTime |
+            Format-Table -AutoSize | Out-File .\diagnostics\scripts-files.txt
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiny11-${{ inputs.variant }}-failure-diagnostics
+          path: diagnostics/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload retained intermediate WIM
+        if: failure() && inputs.skip_cleanup
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiny11-${{ inputs.variant }}-intermediate-wim
+          path: |
+            scripts/tiny11/sources/install.wim
+            scripts/nano11/sources/install.wim
+          retention-days: 3
+          compression-level: 0
+          if-no-files-found: warn
+
+      - name: Dismount Windows source
+        if: always()
+        shell: pwsh
+        run: |
+          $iso = Join-Path $PWD 'windows.iso'
+          if (Test-Path $iso) { Dismount-DiskImage -ImagePath $iso -ErrorAction SilentlyContinue }
