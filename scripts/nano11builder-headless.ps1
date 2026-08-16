@@ -52,7 +52,13 @@ param (
     [switch]$SkipCleanup,
 
     [Parameter(Mandatory=$false, HelpMessage="Preserve winre.wim instead of deleting it. Use this if targeting real hardware, EFI-enabled VMs (VirtualBox/VMware/Hyper-V), or 24H2/25H2 setups. Without this flag, winre.wim is deleted entirely so Windows Setup skips WinRE config gracefully. DO NOT use an empty stub — it causes error 0x8007000B on EFI systems.")]
-    [switch]$PreserveWinRE
+    [switch]$PreserveWinRE,
+
+    [Parameter(Mandatory=$true)][string]$VirtioISOPath,
+    [Parameter(Mandatory=$true)][string]$CloudbaseInitMSIPath,
+    [Parameter(Mandatory=$true)][string]$QemuImgPath,
+    [string]$PveDependenciesPath = (Join-Path $PSScriptRoot '..\config\pve-dependencies.json'),
+    [ValidateRange(16, 2048)][int]$DiskSizeGB = 32
 )
 
 #---------[ Error Handling ]---------#
@@ -70,8 +76,9 @@ $DriveLetter = $ISO + ":"
 $wimFilePath = "$ScratchDisk\nano11\sources\install.wim"
 $scratchDir = "$ScratchDisk\scratchdir"
 $nano11Dir = "$ScratchDisk\nano11"
-$outputISO = "$PSScriptRoot\nano11.iso"
+$outputISO = "$PSScriptRoot\nano11-pve-candidate.qcow2"
 $logFile = "$PSScriptRoot\nano11_$(Get-Date -Format yyyyMMdd_HHmmss).log"
+Import-Module (Join-Path $PSScriptRoot 'modules\PveTemplateBuilder\PveTemplateBuilder.psd1') -Force
 
 # Initialize admin identifiers for permission operations
 try {
@@ -1454,7 +1461,7 @@ try {
     # Registry phase
     Load-RegistryHives
     Apply-RegistryTweaks
-    Apply-PerformanceTweaks
+    Write-Log "Skipping desktop/gaming/TCP performance profile for the PVE candidate"
     Remove-ScheduledTasks
     Unload-RegistryHives
 
@@ -1466,16 +1473,15 @@ try {
 
     # Finalization phase
     Dismount-AndExport
-    Process-BootImage
-    Convert-ToESD
-    Clean-IsoRoot
-    Create-NanoISO
-    Write-BuildInfo -OutputPath "$PSScriptRoot\nano11-buildinfo.json"
+    # VirtIO injection deliberately happens after Nano DriverStore pruning.
+    New-PveCandidateTemplate -ImagePath $wimFilePath -ImageIndex 1 -Variant nano -OutputPath $outputISO `
+        -VirtioIsoPath $VirtioISOPath -CloudbaseInitMsiPath $CloudbaseInitMSIPath `
+        -DependencyManifestPath $PveDependenciesPath -QemuImgPath $QemuImgPath -DiskSizeGB $DiskSizeGB | Out-Null
 
     # Cleanup
     Invoke-Cleanup
 
-    Write-Log "=== Nano11 Build Completed Successfully ===" "INFO"
+    Write-Log "=== Nano11 PVE Candidate Build Completed Successfully ===" "INFO"
     Write-Log "Output: $outputISO"
     Write-Log "WARNING: This is AN EXTREMELY MINIMAL build - NOT for daily use!"
 

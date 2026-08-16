@@ -62,7 +62,13 @@ param (
     [switch]$ENABLE_DOTNET35,
 
     [Parameter(Mandatory=$false, HelpMessage="Preserve winre.wim instead of replacing it with an empty stub. Use this if targeting real hardware or 24H2/25H2 setups to avoid error 0x8007000B.")]
-    [switch]$PreserveWinRE
+    [switch]$PreserveWinRE,
+
+    [Parameter(Mandatory=$true)][string]$VirtioISOPath,
+    [Parameter(Mandatory=$true)][string]$CloudbaseInitMSIPath,
+    [Parameter(Mandatory=$true)][string]$QemuImgPath,
+    [string]$PveDependenciesPath = (Join-Path $PSScriptRoot '..\config\pve-dependencies.json'),
+    [ValidateRange(16, 2048)][int]$DiskSizeGB = 32
 )
 
 #---------[ Error Handling ]---------
@@ -80,8 +86,9 @@ $DriveLetter = $ISO + ":"
 $wimFilePath = "$ScratchDisk\tiny11\sources\install.wim"
 $scratchDir = "$ScratchDisk\scratchdir"
 $tiny11Dir = "$ScratchDisk\tiny11"
-$outputISO = "$PSScriptRoot\tiny11-core.iso"
+$outputISO = "$PSScriptRoot\tiny11-core-pve-candidate.qcow2"
 $logFile = "$PSScriptRoot\tiny11-core_$(Get-Date -Format yyyyMMdd_HHmmss).log"
+Import-Module (Join-Path $PSScriptRoot 'modules\PveTemplateBuilder\PveTemplateBuilder.psd1') -Force
 
 # Initialize admin identifiers for permission operations
 try {
@@ -1262,7 +1269,7 @@ try {
 
     Load-RegistryHives
     Apply-RegistryTweaks
-    Apply-PerformanceTweaks
+    Write-Log "Skipping desktop/gaming/TCP performance profile for the PVE candidate"
     Remove-ScheduledTasks
     Remove-NonEssentialServices
     Unload-RegistryHives
@@ -1273,18 +1280,14 @@ try {
     # Finalization phase
     Optimize-WindowsImage
     Dismount-AndExport
-    Process-BootImage
-
-    # Convert to ESD (CORE-specific: maximum compression)
-    Convert-ToESD
-
-    Create-TinyISO
-    Write-BuildInfo -OutputPath "$PSScriptRoot\tiny11core-buildinfo.json"
+    New-PveCandidateTemplate -ImagePath $wimFilePath -ImageIndex 1 -Variant core -OutputPath $outputISO `
+        -VirtioIsoPath $VirtioISOPath -CloudbaseInitMsiPath $CloudbaseInitMSIPath `
+        -DependencyManifestPath $PveDependenciesPath -QemuImgPath $QemuImgPath -DiskSizeGB $DiskSizeGB | Out-Null
 
     # Cleanup
     Invoke-Cleanup
 
-    Write-Log "=== Tiny11 Core Build Completed Successfully ===" "INFO"
+    Write-Log "=== Tiny11 Core PVE Candidate Build Completed Successfully ===" "INFO"
     Write-Log "Output: $outputISO"
     Write-Log "WARNING: This is a minimal Core build with reduced serviceability!"
 

@@ -1,0 +1,18 @@
+{
+  "virtio": {
+    "version": "0.1.285-1",
+    "url": "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.285-1/virtio-win.iso",
+    "hash_algorithm": "SHA512",
+    "hash": "4f13070cc9241fa342deab4ebfac360565030580ff77b6e5f1951a64627621e5da4abfd30e1e46ca8bae2bb7dd4ff98141aff424142c9629a5876a61283962e5",
+    "drivers": ["vioscsi", "viostor", "NetKVM", "Balloon", "vioserial", "pvpanic", "viorng"]
+  },
+  "cloudbase_init": {
+    "version": "1.1.8",
+    "url": "https://github.com/cloudbase/cloudbase-init/releases/download/1.1.8/CloudbaseInitSetup_1_1_8_x64.msi",
+    "hash_algorithm": "SHA256",
+    "hash": "0e7fa42e0cbc0ce7657f85730b0c6cc7afc4087a3639df0ff51a721a0be19bd5"
+  },
+  "qemu": {
+    "chocolatey_version": "2026.7.23"
+  }
+}

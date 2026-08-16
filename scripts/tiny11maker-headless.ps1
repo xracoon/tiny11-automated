@@ -49,7 +49,13 @@ param (
     [string]$SCRATCH,
     
     [Parameter(Mandatory=$false, HelpMessage="Skip cleanup of temporary files")]
-    [switch]$SkipCleanup
+    [switch]$SkipCleanup,
+
+    [Parameter(Mandatory=$true)][string]$VirtioISOPath,
+    [Parameter(Mandatory=$true)][string]$CloudbaseInitMSIPath,
+    [Parameter(Mandatory=$true)][string]$QemuImgPath,
+    [string]$PveDependenciesPath = (Join-Path $PSScriptRoot '..\config\pve-dependencies.json'),
+    [ValidateRange(16, 2048)][int]$DiskSizeGB = 32
 )
 
 #---------[ Error Handling ]---------#
@@ -67,8 +73,9 @@ $DriveLetter = $ISO + ":"
 $wimFilePath = "$ScratchDisk\tiny11\sources\install.wim"
 $scratchDir = "$ScratchDisk\scratchdir"
 $tiny11Dir = "$ScratchDisk\tiny11"
-$outputISO = "$PSScriptRoot\tiny11.iso"
+$outputISO = "$PSScriptRoot\tiny11-standard-pve-candidate.qcow2"
 $logFile = "$PSScriptRoot\tiny11_$(Get-Date -Format yyyyMMdd_HHmmss).log"
+Import-Module (Join-Path $PSScriptRoot 'modules\PveTemplateBuilder\PveTemplateBuilder.psd1') -Force
 
 #---------[ Functions ]---------#
 function Write-Log {
@@ -963,7 +970,7 @@ try {
     Remove-BloatwareApps
     Remove-EdgeAndOneDrive
     Apply-RegistryTweaks
-    Apply-PerformanceTweaks
+    Write-Log "Skipping desktop/gaming/TCP performance profile for the PVE candidate"
     Remove-ScheduledTasks
     Remove-NonEssentialServices
     Unload-RegistryHives
@@ -971,14 +978,14 @@ try {
     # Finalization phase
     Optimize-WindowsImage
     Dismount-AndExport
-    Process-BootImage
-    Create-TinyISO
-    Write-BuildInfo -OutputPath "$PSScriptRoot\tiny11-buildinfo.json"
+    New-PveCandidateTemplate -ImagePath $wimFilePath -ImageIndex 1 -Variant standard -OutputPath $outputISO `
+        -VirtioIsoPath $VirtioISOPath -CloudbaseInitMsiPath $CloudbaseInitMSIPath `
+        -DependencyManifestPath $PveDependenciesPath -QemuImgPath $QemuImgPath -DiskSizeGB $DiskSizeGB | Out-Null
     
     # Cleanup
     Invoke-Cleanup
     
-    Write-Log "=== Tiny11 Build Completed Successfully ===" "INFO"
+    Write-Log "=== Tiny11 PVE Candidate Build Completed Successfully ===" "INFO"
     Write-Log "Output: $outputISO"
     
     exit 0
