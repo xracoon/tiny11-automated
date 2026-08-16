@@ -69,6 +69,7 @@ nano11-zh-cn-pve-candidate.qcow2.manifest.json
 - Q35 + OVMF/UEFI
 - Secure Boot 兼容 EFI 分区
 - 默认 32 GiB 动态 GPT 磁盘
+- 使用标准 DISM 映像应用模式；QCOW2 由 `qemu-img` 压缩，不依赖宿主机 WOF/CompactOS
 - VirtIO SCSI single、IO thread、discard
 - VirtIO 网卡和 balloon
 - QEMU Guest Agent

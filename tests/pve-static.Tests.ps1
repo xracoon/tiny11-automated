@@ -20,6 +20,8 @@ if ($deps.qemu.chocolatey_version -notmatch '^\d+\.\d+\.\d+$') { throw 'QEMU pac
 @('static-only','runtime_validated = $false','hardware_validated = $false','ConfigDrive2','q35',"language = `$Language",'microsoft-pinyin') | ForEach-Object {
     if (-not $moduleText.Contains($_)) { throw "Module is missing required marker: $_" }
 }
+if ($moduleText.Contains("'/Compact'")) { throw 'PVE image application must not require unsupported DISM CompactOS mode.' }
+if (-not $moduleText.Contains("'0x{0:X8}'")) { throw 'Native command failures must include a hexadecimal Windows error code.' }
 
 @('Set-ZhCnInternationalSettings','Assert-ZhCnSupport','Language.Basic~~~zh-CN~0.0.1.0','InputMethod\CHS','msyh*.ttc','simsun*.ttc','nano11-zh-cn-pve-candidate.qcow2') | ForEach-Object {
     if (-not $nanoText.Contains($_)) { throw "Nano builder is missing zh-CN contract marker: $_" }
