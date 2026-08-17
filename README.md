@@ -30,11 +30,11 @@
 4. 提供有效的官方 Windows 11 x64 简体中文 ISO URL。
 5. 选择版本映射和虚拟磁盘容量。工作流中的常用索引值是版本选择器；例如 `6` 表示 Pro，构建器会通过不受本地化影响的 `EditionId=Professional` 在 zh-CN ISO 中定位实际索引，避免误构建“专业工作站版”。
 6. 建议保留默认启用的 Windows 恢复环境。只有明确追求最小体积且接受失去 WinRE 时才关闭。
-6. 构建完成后下载 `nano11-zh-cn-pve-candidate` Artifact。
+7. 构建完成后下载 `nano11-zh-cn-pve-candidate` Artifact。
 
 工作流完全包含下载、依赖校验、ISO 挂载、Nano 裁剪、PVE 磁盘构建和 Artifact 上传，不再调用多变体 reusable workflow。产物保留 7 天，不发布到 GitHub Releases 或 SourceForge。
 
-构建失败时会上传 `nano11-zh-cn-failure-diagnostics`。“保留中间文件”默认启用，失败后还会上传裁剪后的 `install.wim`（保留 3 天，文件较大）；存储空间受限时可以手动关闭。
+构建失败时会自动上传 `nano11-zh-cn-failure-diagnostics`。“保留中间文件”默认不勾选；只有手动启用时，失败后才额外上传裁剪后的 `install.wim`（保留 3 天，文件较大）。
 
 Artifact 包含：
 
@@ -76,6 +76,18 @@ nano11-zh-cn-pve-candidate.qcow2.manifest.json
 - Cloudbase-Init + ConfigDrive2
 - 可选 TPM 2.0
 
+### 首次启动与默认账户
+
+PVE 候选磁盘不是通过安装 ISO 启动，而是把裁剪后的 WIM 直接应用到虚拟磁盘。构建器因此会在离线系统的 `Windows\Panther` 写入专用应答文件：首次启动会跳过语言、联网、更新检查、计算机名和账户创建等 OOBE 页面，完成后直接显示登录界面。
+
+- 默认账户：`Administrator`
+- 默认密码：空
+- 自动登录：关闭
+- 系统语言：简体中文（`zh-CN`）
+- Windows 计算机名：首次启动时自动生成唯一名称，不自动等同于 PVE VM 名称
+
+空密码仅适合隔离环境中的 PVE 控制台测试。Windows 默认会限制空密码账户的远程网络登录；生产环境应在导入时使用 `--cipassword`。Cloudbase-Init 首次应用 ConfigDrive2 配置时可能自动重启一次。
+
 导入示例：
 
 ```bash
@@ -87,6 +99,14 @@ sudo ./scripts/import-pve-template.sh \
   nano11-zh-cn
 ```
 
+生产环境设置 `Administrator` 密码：
+
+```bash
+sudo ./scripts/import-pve-template.sh \
+  120 ./nano11-zh-cn-pve-candidate.qcow2 local-lvm vmbr0 nano11-zh-cn \
+  --cipassword '请替换为强密码'
+```
+
 可选参数：
 
 | 参数 | 默认值 | 说明 |
@@ -95,9 +115,14 @@ sudo ./scripts/import-pve-template.sh \
 | `--memory N` | 4096 | 内存 (MB) |
 | `--balloon N` | 2048 | Balloon 内存 (MB) |
 | `--machine TYPE` | q35 | 机器类型 |
+| `--cipassword PASS` | 空 | 通过 ConfigDrive2 设置 `Administrator` 密码 |
 | `--template` | false | 转为模板（默认保持可启动 VM） |
 | `--tpm` | false | 添加 TPM 2.0 |
 | `--no-cloudinit` | false | 跳过 cloud-init |
+
+启用 Cloud-Init 时导入工具默认配置 DHCP。PVE 的 Windows ConfigDrive2 使用 Cloudbase-Init 配置文件中指定的管理员账户，`ciuser` 不能可靠更换该账户，因此脚本固定使用 `Administrator`。使用 `--no-cloudinit` 时不能同时传入 `--cipassword`，但免 OOBE 和默认空密码账户仍然有效。
+
+`--cipassword` 的值可能出现在当前 Shell 历史或短暂的进程参数中；导入完成后应清理历史记录，或在受控终端中执行该命令。
 
 完整真实节点验收清单见 [`docs/PVE.md`](docs/PVE.md)。
 

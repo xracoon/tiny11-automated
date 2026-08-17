@@ -19,6 +19,7 @@ set -euo pipefail
 #   --memory N        Memory in MB (default: 4096)
 #   --balloon N       Balloon memory in MB (default: 2048)
 #   --machine TYPE    Machine type (default: q35)
+#   --cipassword PASS Set the Administrator password through ConfigDrive2
 #   --no-cloudinit    Skip cloud-init disk attachment
 #   --template        Convert to template after import (default: keep as VM)
 #   --tpm             Add TPM 2.0 state disk
@@ -37,7 +38,11 @@ vmid="$1";      shift
 image="$1";     shift
 storage="$1";   shift
 bridge="$1";    shift
-name="${1:-tiny11-pve-candidate}"; shift || true
+name="tiny11-pve-candidate"
+if [[ $# -gt 0 && "$1" != --* ]]; then
+  name="$1"
+  shift
+fi
 
 # --- Defaults for optional parameters -----------------------------------------
 
@@ -48,6 +53,7 @@ machine="q35"
 do_cloudinit=true
 do_template=false
 do_tpm=false
+cipassword=""
 
 # --- Parse optional named arguments -------------------------------------------
 
@@ -57,6 +63,7 @@ while [[ $# -gt 0 ]]; do
     --memory)      memory="$2";     shift 2 ;;
     --balloon)     balloon="$2";    shift 2 ;;
     --machine)     machine="$2";    shift 2 ;;
+    --cipassword)  [[ $# -ge 2 ]] || { echo "--cipassword requires a value" >&2; exit 2; }; cipassword="$2"; shift 2 ;;
     --no-cloudinit) do_cloudinit=false; shift ;;
     --template)     do_template=true;  shift ;;
     --tpm)         do_tpm=true;     shift ;;
@@ -70,6 +77,10 @@ done
 [[ "$vmid" =~ ^[1-9][0-9]*$ ]] || { echo "VMID must be a positive integer" >&2; exit 2; }
 [[ -f "$image" ]]              || { echo "Image not found: $image" >&2; exit 2; }
 [[ -f "$image.sha256" ]]       || { echo "Checksum file not found: $image.sha256" >&2; exit 2; }
+if ! $do_cloudinit && [[ -n "$cipassword" ]]; then
+  echo "--cipassword requires cloud-init; remove --no-cloudinit" >&2
+  exit 2
+fi
 (cd "$(dirname "$image")" && sha256sum -c "$(basename "$image").sha256")
 
 # --- Create VM ----------------------------------------------------------------
@@ -103,7 +114,10 @@ qm set "$vmid" --delete unused0
 
 if $do_cloudinit; then
   echo ">>> Adding cloud-init..."
-  qm set "$vmid" --ide2 "$storage:cloudinit" --citype configdrive2
+  qm set "$vmid" --ide2 "$storage:cloudinit" --citype configdrive2 --ipconfig0 ip=dhcp
+  if [[ -n "$cipassword" ]]; then
+    qm set "$vmid" --cipassword "$cipassword"
+  fi
 fi
 
 # --- TPM (optional) -----------------------------------------------------------
@@ -116,6 +130,10 @@ fi
 # --- Convert to template (optional) -------------------------------------------
 
 if $do_template; then
+  if [[ -z "$cipassword" ]]; then
+    echo "WARNING: Template uses the default Administrator account with a blank password." >&2
+    echo "         Use --cipassword for anything beyond isolated console testing." >&2
+  fi
   echo ">>> Converting to template..."
   qm template "$vmid"
 fi
@@ -128,4 +146,9 @@ qm config "$vmid"
 echo ""
 if $do_template; then
   echo "Clone with:  qm clone $vmid <newid> --name <name> [--full]"
+fi
+if [[ -z "$cipassword" ]]; then
+  echo "Guest login: Administrator with a blank password (local console only)."
+else
+  echo "Guest login: Administrator with the ConfigDrive2 password supplied at import."
 fi

@@ -19,7 +19,7 @@ on:
       skip_cleanup:
         description: 失败时保留并上传裁剪后的 install.wim（占用较多存储）
         type: boolean
-        default: true
+        default: false
       preserve_winre:
         description: 保留 Windows 恢复环境
         type: boolean
