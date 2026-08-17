@@ -17,7 +17,17 @@
 sudo ./scripts/import-pve-template.sh 120 ./nano11-zh-cn-pve-candidate.qcow2 local-lvm vmbr0 nano11-zh-cn
 ```
 
-工具会先验证 SHA-256，再创建和配置虚拟机。它不会把“成功导入”当作“成功启动”。
+自定义 VM 配置（4核/8G）：
+
+```bash
+sudo ./scripts/import-pve-template.sh \
+  120 ./nano11-zh-cn-pve-candidate.qcow2 local-lvm vmbr0 nano11-zh-cn \
+  --cores 4 --memory 8192
+```
+
+如需转为模板，添加 `--template`；添加 TPM 2.0 使用 `--tpm`。
+
+工具会先验证 SHA-256，再创建和配置虚拟机。它不会把"成功导入"当作"成功启动"。
 
 ## 必须在真实节点执行的验收
 

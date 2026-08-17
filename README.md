@@ -87,6 +87,18 @@ sudo ./scripts/import-pve-template.sh \
   nano11-zh-cn
 ```
 
+可选参数：
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `--cores N` | 2 | CPU 核数 |
+| `--memory N` | 4096 | 内存 (MB) |
+| `--balloon N` | 2048 | Balloon 内存 (MB) |
+| `--machine TYPE` | q35 | 机器类型 |
+| `--template` | false | 转为模板（默认保持可启动 VM） |
+| `--tpm` | false | 添加 TPM 2.0 |
+| `--no-cloudinit` | false | 跳过 cloud-init |
+
 完整真实节点验收清单见 [`docs/PVE.md`](docs/PVE.md)。
 
 ## 清单与验证边界
