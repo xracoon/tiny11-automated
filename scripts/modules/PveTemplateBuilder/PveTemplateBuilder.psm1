@@ -89,6 +89,10 @@ function Add-PveOfflinePayload {
         Add-WindowsDriver -Path $MountPath -Driver $driverPath -Recurse -ForceUnsigned:$false | Out-Null
     }
 
+    $blnSvr = Get-ChildItem -LiteralPath (Join-Path $VirtioRoot 'Balloon\w11\amd64') -Filter 'blnsvr.exe' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $blnSvr) { throw 'blnsvr.exe was not found in the pinned VirtIO ISO.' }
+    Copy-Item -LiteralPath $blnSvr.FullName -Destination (Join-Path $MountPath 'Windows\System32\blnsvr.exe') -Force
+
     $guestAgent = Get-ChildItem -LiteralPath (Join-Path $VirtioRoot 'guest-agent') -Filter 'qemu-ga-x86_64.msi' -File -Recurse | Select-Object -First 1
     if (-not $guestAgent) { throw 'qemu-ga-x86_64.msi was not found in the pinned VirtIO ISO.' }
 
@@ -153,6 +157,13 @@ exit /b 1
     Invoke-NativeChecked reg.exe @('load', 'HKLM\PVE_SYSTEM', $systemHive)
     try {
         Invoke-NativeChecked reg.exe @('add', 'HKLM\PVE_SYSTEM\ControlSet001\Control\Session Manager\Power', '/v', 'HiberbootEnabled', '/t', 'REG_DWORD', '/d', '0', '/f')
+
+        $balloonSvc = 'HKLM\PVE_SYSTEM\ControlSet001\Services\BalloonService'
+        Invoke-NativeChecked reg.exe @('add', $balloonSvc, '/v', 'Start',        '/t', 'REG_DWORD',     '/d', '2',  '/f')
+        Invoke-NativeChecked reg.exe @('add', $balloonSvc, '/v', 'Type',         '/t', 'REG_DWORD',     '/d', '16', '/f')
+        Invoke-NativeChecked reg.exe @('add', $balloonSvc, '/v', 'ErrorControl', '/t', 'REG_DWORD',     '/d', '1',  '/f')
+        Invoke-NativeChecked reg.exe @('add', $balloonSvc, '/v', 'ImagePath',    '/t', 'REG_EXPAND_SZ', '/d', '%SystemRoot%\System32\blnsvr.exe', '/f')
+        Invoke-NativeChecked reg.exe @('add', $balloonSvc, '/v', 'DisplayName',  '/t', 'REG_SZ',        '/d', 'Balloon Service', '/f')
     } finally {
         Invoke-NativeChecked reg.exe @('unload', 'HKLM\PVE_SYSTEM')
     }
