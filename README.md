@@ -51,7 +51,19 @@ Only these W11 x64 VirtIO driver families are injected:
 vioscsi, viostor, NetKVM, Balloon, vioserial, pvpanic, viorng
 ```
 
-QEMU Guest Agent and Cloudbase-Init are staged inside the offline image and installed by `SetupComplete.cmd`. No fixed password is embedded. Cloudbase-Init obtains guest configuration from the PVE ConfigDrive2 data source.
+QEMU Guest Agent and Cloudbase-Init are staged inside the offline image and installed by `SetupComplete.cmd`. No fixed non-empty password is embedded. Cloudbase-Init obtains guest configuration from the PVE ConfigDrive2 data source.
+
+## Unattended first boot
+
+PVE disks are created by applying the customized WIM directly rather than booting an installer ISO. The shared module therefore places a dedicated answer file in `Windows\Panther`. Standard, Core, and Nano candidates all:
+
+- skip language, network, update, computer-name, account, and privacy OOBE pages
+- enable the built-in `Administrator` account with a blank password by default
+- stop at the login screen; AutoLogon is not enabled
+- let Windows generate a unique computer name, independent of the PVE VM display name
+- retain the source image's configured language and regional defaults
+
+The blank password is intended only for isolated local-console testing. Windows normally restricts remote network logon for accounts with blank passwords. Use `--cipassword` when importing production guests. Cloudbase-Init can reboot once while applying initial ConfigDrive2 data.
 
 ## GitHub Actions build
 
@@ -92,6 +104,8 @@ The generated manifest explicitly records:
   "hardware_validated": false
 }
 ```
+
+It also records the unattended provisioning contract: OOBE skipped, default user `Administrator`, blank default password, AutoLogon disabled, and a Windows-generated hostname.
 
 ## Local Windows build
 
@@ -134,7 +148,19 @@ sudo ./scripts/import-pve-template.sh \
   nano11
 ```
 
-The helper verifies SHA-256, creates the Q35/OVMF VM, imports the disk, attaches a ConfigDrive2 cloud-init disk, and enables the recommended VirtIO and QEMU Agent settings. TPM remains optional and is not added automatically.
+For a production password and template conversion:
+
+```bash
+sudo ./scripts/import-pve-template.sh \
+  120 ./nano11-pve-candidate.qcow2 local-lvm vmbr0 nano11 \
+  --cores 4 --memory 8192 --cipassword 'replace-with-a-strong-password' --template
+```
+
+The helper also supports `--balloon`, `--machine`, `--tpm`, and `--no-cloudinit`. With Cloud-Init enabled it configures ConfigDrive2 and DHCP. PVE's Windows ConfigDrive2 uses the administrator named in the Cloudbase-Init configuration and does not reliably honor `ciuser`, so the guest account remains `Administrator`. `--cipassword` cannot be combined with `--no-cloudinit`.
+
+Command-line passwords can be retained in shell history or briefly exposed through process arguments. Run password-bearing imports from a controlled terminal and clear history according to local policy.
+
+The helper verifies SHA-256, creates the Q35/OVMF VM, imports the disk, attaches a ConfigDrive2 cloud-init disk, configures DHCP, and enables the recommended VirtIO and QEMU Agent settings. TPM remains optional and is not added automatically.
 
 Before using a candidate as a template, complete the real-node checklist in [`docs/PVE.md`](docs/PVE.md), including first boot, Secure Boot, storage/network devices, QEMU Agent, Cloudbase-Init, clone, shutdown, snapshot, discard, ballooning, and disk expansion tests.
 

@@ -104,6 +104,8 @@ jobs:
           $manifest = Get-Content "$($candidate.FullName).manifest.json" -Raw | ConvertFrom-Json
           if ($manifest.target -ne 'Proxmox VE 8.4/9.x' -or $manifest.validation_level -ne 'static-only') { throw 'Candidate manifest target/validation level is invalid.' }
           if ($manifest.runtime_validated -ne $false -or $manifest.hardware_validated -ne $false) { throw 'Candidate must not claim runtime or hardware validation.' }
+          if ($manifest.provisioning.oobe_skipped -ne $true -or $manifest.provisioning.default_user -ne 'Administrator') { throw 'Candidate provisioning metadata is invalid.' }
+          if ($manifest.provisioning.default_password -ne 'blank' -or $manifest.provisioning.auto_logon -ne $false) { throw 'Candidate default login metadata is invalid.' }
 
       - name: Upload candidate artifact
         uses: actions/upload-artifact@v4

@@ -14,13 +14,19 @@ if ($deps.qemu.chocolatey_version -notmatch '^\d+\.\d+\.\d+$') { throw 'QEMU pac
 @('vioscsi','viostor','NetKVM','Balloon','vioserial','pvpanic','viorng') | ForEach-Object {
     if ($_ -notin $deps.virtio.drivers) { throw "Missing required VirtIO driver: $_" }
 }
-@('static-only','runtime_validated = $false','hardware_validated = $false','ConfigDrive2','q35') | ForEach-Object {
+@('static-only','runtime_validated = $false','hardware_validated = $false','ConfigDrive2','q35','Windows\Panther','SkipMachineOOBE','SkipUserOOBE',"default_user = 'Administrator'","default_password = 'blank'",'auto_logon = $false') | ForEach-Object {
     if (-not $moduleText.Contains($_)) { throw "Module is missing required marker: $_" }
 }
 if ($moduleText.Contains("'/Compact'")) { throw 'PVE image application must not require unsupported DISM CompactOS mode.' }
 if (-not $moduleText.Contains("'0x{0:X8}'")) { throw 'Native command failures must include a hexadecimal Windows error code.' }
+if ($moduleText.Contains('<AutoLogon>')) { throw 'PVE candidates must stop at the login screen instead of enabling AutoLogon.' }
 @('failure-diagnostics','intermediate-wim','Dependency checksum mismatch') | ForEach-Object {
     if (-not $workflowText.Contains($_)) { throw "Reusable workflow is missing diagnostic marker: $_" }
+}
+if ($workflowText -notmatch '(?s)skip_cleanup:.+?default: false') { throw 'Intermediate WIM retention must be unchecked by default.' }
+$importText = Get-Content (Join-Path $root 'scripts/import-pve-template.sh') -Raw
+@('--cipassword','--ipconfig0 ip=dhcp','Administrator with a blank password') | ForEach-Object {
+    if (-not $importText.Contains($_)) { throw "PVE import helper is missing provisioning marker: $_" }
 }
 
 $builders = @('tiny11maker-headless.ps1','tiny11coremaker-headless.ps1','nano11builder-headless.ps1')

@@ -27,6 +27,55 @@ function Get-FreeDriveLetters {
     return @($letters | Select-Object -First $Count)
 }
 
+function Set-PveUnattend {
+    param([Parameter(Mandatory)][string]$MountPath)
+
+    # These disks are produced by applying install.wim directly. The installer
+    # ISO answer file is not used, so stage a PVE-specific answer file in the
+    # applied image's Panther directory.
+    $panther = Join-Path $MountPath 'Windows\Panther'
+    New-Item -ItemType Directory -Path $panther -Force | Out-Null
+    $unattend = @'
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+  <settings pass="specialize">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <ComputerName>*</ComputerName>
+      <RegisteredOwner>tiny11-automated</RegisteredOwner>
+    </component>
+    <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Description>Enable the built-in Administrator account</Description>
+          <Path>cmd.exe /c net user Administrator /active:yes</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <Description>Use a blank local console password unless ConfigDrive sets one</Description>
+          <Path>cmd.exe /c net user Administrator ""</Path>
+        </RunSynchronousCommand>
+      </RunSynchronous>
+    </component>
+  </settings>
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <OOBE>
+        <HideEULAPage>true</HideEULAPage>
+        <HideLocalAccountScreen>true</HideLocalAccountScreen>
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <ProtectYourPC>3</ProtectYourPC>
+        <SkipMachineOOBE>true</SkipMachineOOBE>
+        <SkipUserOOBE>true</SkipUserOOBE>
+      </OOBE>
+    </component>
+  </settings>
+</unattend>
+'@
+    Set-Content -LiteralPath (Join-Path $panther 'unattend.xml') -Value $unattend -Encoding UTF8
+}
+
 function Add-PveOfflinePayload {
     param(
         [string]$MountPath,
@@ -62,20 +111,24 @@ serial_port=COM1
 '@
     Set-Content -LiteralPath (Join-Path $payload 'cloudbase-init.conf') -Value $cloudbaseConf -Encoding Ascii
 
+    Set-PveUnattend -MountPath $MountPath
+
     $setupComplete = @'
 @echo off
 setlocal
 set "PVE_PAYLOAD=%WINDIR%\Setup\Scripts\Pve"
 set "PVE_LOG=%WINDIR%\Temp\pve-firstboot.log"
 echo [%DATE% %TIME%] Installing QEMU Guest Agent>>"%PVE_LOG%"
-msiexec /i "%PVE_PAYLOAD%\qemu-ga-x86_64.msi" /qn /norestart /l*v "%WINDIR%\Temp\qemu-ga-install.log"
+call :install_msi "%PVE_PAYLOAD%\qemu-ga-x86_64.msi" /l*v "%WINDIR%\Temp\qemu-ga-install.log"
 if errorlevel 1 goto :failed
 echo [%DATE% %TIME%] Installing Cloudbase-Init>>"%PVE_LOG%"
-msiexec /i "%PVE_PAYLOAD%\CloudbaseInitSetup.msi" /qn /norestart RUN_SERVICE_AS_LOCAL_SYSTEM=1 /l*v "%WINDIR%\Temp\cloudbase-init-install.log"
+call :install_msi "%PVE_PAYLOAD%\CloudbaseInitSetup.msi" RUN_SERVICE_AS_LOCAL_SYSTEM=1 /l*v "%WINDIR%\Temp\cloudbase-init-install.log"
 if errorlevel 1 goto :failed
 copy /y "%PVE_PAYLOAD%\cloudbase-init.conf" "%ProgramFiles%\Cloudbase Solutions\Cloudbase-Init\conf\cloudbase-init.conf">>"%PVE_LOG%" 2>&1
 sc config QEMU-GA start= auto>>"%PVE_LOG%" 2>&1
 sc config cloudbase-init start= auto>>"%PVE_LOG%" 2>&1
+sc start QEMU-GA>>"%PVE_LOG%" 2>&1
+sc start cloudbase-init>>"%PVE_LOG%" 2>&1
 sc query QEMU-GA>>"%PVE_LOG%" 2>&1
 sc query cloudbase-init>>"%PVE_LOG%" 2>&1
 if errorlevel 1 goto :failed
@@ -84,6 +137,14 @@ echo [%DATE% %TIME%] PVE guest integration staged successfully>>"%PVE_LOG%"
 exit /b 0
 :failed
 echo [%DATE% %TIME%] PVE guest integration failed; payload retained for diagnosis>>"%PVE_LOG%"
+exit /b 1
+:install_msi
+msiexec /i %1 /qn /norestart %2 %3 %4 %5 %6 %7 %8 %9
+set "PVE_MSI_RC=%ERRORLEVEL%"
+if "%PVE_MSI_RC%"=="0" exit /b 0
+if "%PVE_MSI_RC%"=="1641" exit /b 0
+if "%PVE_MSI_RC%"=="3010" exit /b 0
+echo [%DATE% %TIME%] MSI installation failed with exit code %PVE_MSI_RC%>>"%PVE_LOG%"
 exit /b 1
 '@
     Set-Content -LiteralPath (Join-Path $MountPath 'Windows\Setup\Scripts\SetupComplete.cmd') -Value $setupComplete -Encoding Ascii
@@ -183,6 +244,7 @@ function New-PveCandidateTemplate {
         schema_version = 1; artifact = [IO.Path]::GetFileName($OutputPath); sha256 = $sha256
         variant = $Variant; target = 'Proxmox VE 8.4/9.x'; validation_level = 'static-only'
         runtime_validated = $false; hardware_validated = $false; disk_size_gib = $DiskSizeGB
+        provisioning = [ordered]@{ oobe_skipped = $true; default_user = 'Administrator'; default_password = 'blank'; auto_logon = $false; hostname_source = 'windows-generated'; cloud_init_user = 'Administrator' }
         firmware = 'OVMF (UEFI)'; machine = 'q35'; secure_boot_compatible = $true
         recommended = [ordered]@{ scsi_controller = 'VirtIO SCSI single'; iothread = $true; discard = $true; nic = 'VirtIO'; balloon = $true; qemu_agent = $true; cloud_init = 'ConfigDrive2'; tpm = 'optional' }
         gpu_sharing = [ordered]@{ integrated = $false; note = 'No N5105/Jasper Lake GPU sharing, SR-IOV, GVT-g, or Intel GPU driver integration.' }

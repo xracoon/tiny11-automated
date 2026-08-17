@@ -1,32 +1,134 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -lt 4 || $# -gt 5 ]]; then
-  echo "Usage: $0 <vmid> <candidate.qcow2> <storage> <bridge> [name]" >&2
+# Import a Standard/Core/Nano PVE candidate into Proxmox VE.
+#
+# Usage:
+#   ./scripts/import-pve-template.sh <vmid> <candidate.qcow2> <storage> <bridge> [name] [OPTIONS]
+#
+# Required positional arguments:
+#   vmid              VM ID
+#   candidate.qcow2   Path to the candidate disk
+#   storage           PVE storage target (for example local-lvm)
+#   bridge            Network bridge (for example vmbr0)
+#   name              VM name (default: tiny11-pve-candidate)
+#
+# Optional arguments:
+#   --cores N         CPU cores (default: 2)
+#   --memory N        Memory in MB (default: 4096)
+#   --balloon N       Balloon memory in MB (default: 2048)
+#   --machine TYPE    Machine type (default: q35)
+#   --cipassword PASS Set the Administrator password through ConfigDrive2
+#   --no-cloudinit    Skip the cloud-init disk
+#   --template        Convert the imported VM to a template
+#   --tpm             Add a TPM 2.0 state disk
+
+usage() {
+  sed -n '/^# Usage:/,/^$/p' "$0" | sed 's/^# \?//' >&2
   exit 2
+}
+
+[[ $# -ge 4 ]] || usage
+
+vmid="$1"; shift
+image="$1"; shift
+storage="$1"; shift
+bridge="$1"; shift
+name="tiny11-pve-candidate"
+if [[ $# -gt 0 && "$1" != --* ]]; then
+  name="$1"
+  shift
 fi
 
-vmid="$1"
-image="$2"
-storage="$3"
-bridge="$4"
-name="${5:-tiny11-pve-candidate}"
+cores=2
+memory=4096
+balloon=2048
+machine="q35"
+do_cloudinit=true
+do_template=false
+do_tpm=false
+cipassword=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --cores)        [[ $# -ge 2 ]] || usage; cores="$2"; shift 2 ;;
+    --memory)       [[ $# -ge 2 ]] || usage; memory="$2"; shift 2 ;;
+    --balloon)      [[ $# -ge 2 ]] || usage; balloon="$2"; shift 2 ;;
+    --machine)      [[ $# -ge 2 ]] || usage; machine="$2"; shift 2 ;;
+    --cipassword)   [[ $# -ge 2 ]] || { echo "--cipassword requires a value" >&2; exit 2; }; cipassword="$2"; shift 2 ;;
+    --no-cloudinit) do_cloudinit=false; shift ;;
+    --template)     do_template=true; shift ;;
+    --tpm)          do_tpm=true; shift ;;
+    -h|--help)      usage ;;
+    *)              echo "Unknown option: $1" >&2; exit 2 ;;
+  esac
+done
 
 [[ "$vmid" =~ ^[1-9][0-9]*$ ]] || { echo "VMID must be a positive integer" >&2; exit 2; }
+[[ "$cores" =~ ^[1-9][0-9]*$ ]] || { echo "CPU cores must be a positive integer" >&2; exit 2; }
+[[ "$memory" =~ ^[1-9][0-9]*$ ]] || { echo "Memory must be a positive integer" >&2; exit 2; }
+[[ "$balloon" =~ ^[0-9]+$ ]] || { echo "Balloon memory must be a non-negative integer" >&2; exit 2; }
 [[ -f "$image" ]] || { echo "Image not found: $image" >&2; exit 2; }
 [[ -f "$image.sha256" ]] || { echo "Checksum file not found: $image.sha256" >&2; exit 2; }
+if ! $do_cloudinit && [[ -n "$cipassword" ]]; then
+  echo "--cipassword requires cloud-init; remove --no-cloudinit" >&2
+  exit 2
+fi
 (cd "$(dirname "$image")" && sha256sum -c "$(basename "$image").sha256")
 
-qm create "$vmid" --name "$name" --machine q35 --bios ovmf --ostype win11 \
-  --cpu host --cores 2 --memory 4096 --balloon 2048 --agent enabled=1,fstrim_cloned_disks=1 \
+echo ">>> Creating VM $vmid ($name)..."
+qm create "$vmid" --name "$name" --machine "$machine" --bios ovmf --ostype win11 \
+  --cpu host --cores "$cores" --memory "$memory" --balloon "$balloon" \
+  --agent enabled=1,fstrim_cloned_disks=1 \
   --scsihw virtio-scsi-single --net0 "virtio,bridge=$bridge" --serial0 socket
-qm set "$vmid" --efidisk0 "$storage:1,efitype=4m,pre-enrolled-keys=1"
-qm importdisk "$vmid" "$image" "$storage" --format qcow2
-imported_volume="$(qm config "$vmid" | awk -F': ' '$1 == "unused0" { print $2 }' | cut -d, -f1)"
-[[ -n "$imported_volume" ]] || { echo "Could not resolve the imported unused0 volume" >&2; exit 1; }
-qm set "$vmid" --scsi0 "$imported_volume,discard=on,iothread=1,ssd=1" --delete unused0 --boot order=scsi0
-qm set "$vmid" --ide2 "$storage:cloudinit" --citype configdrive2
 
-echo "Candidate imported as VM $vmid. Add TPM only if your policy requires it:"
-echo "  qm set $vmid --tpmstate0 $storage:1,version=v2.0"
-echo "This helper does not assert that the guest has booted; perform the runtime checklist in docs/PVE.md."
+echo ">>> Creating EFI disk..."
+qm set "$vmid" --efidisk0 "$storage:1,efitype=4m,pre-enrolled-keys=1"
+
+echo ">>> Importing candidate disk..."
+qm importdisk "$vmid" "$image" "$storage" --format qcow2
+
+imported_volume="$(qm config "$vmid" | awk -F': ' '$1 == "unused0" { print $2 }' | cut -d, -f1)"
+[[ -n "$imported_volume" ]] || { echo "ERROR: Could not resolve imported unused0 volume" >&2; exit 1; }
+
+# Keep disk attachment and removal of unused0 separate. PVE 9 can otherwise
+# race while updating the imported volume configuration.
+echo ">>> Attaching imported disk as scsi0..."
+qm set "$vmid" --scsi0 "$imported_volume,discard=on,iothread=1,ssd=1" --boot order=scsi0
+qm set "$vmid" --delete unused0
+
+if $do_cloudinit; then
+  echo ">>> Adding ConfigDrive2 cloud-init disk..."
+  qm set "$vmid" --ide2 "$storage:cloudinit" --citype configdrive2 --ipconfig0 ip=dhcp
+  if [[ -n "$cipassword" ]]; then
+    qm set "$vmid" --cipassword "$cipassword"
+  fi
+fi
+
+if $do_tpm; then
+  echo ">>> Adding TPM 2.0..."
+  qm set "$vmid" --tpmstate0 "$storage:1,version=v2.0"
+fi
+
+if $do_template; then
+  if [[ -z "$cipassword" ]]; then
+    echo "WARNING: Template uses the default Administrator account with a blank password." >&2
+    echo "         Use --cipassword for anything beyond isolated console testing." >&2
+  fi
+  echo ">>> Converting to template..."
+  qm template "$vmid"
+fi
+
+echo ""
+echo "=== VM $vmid ($name) imported successfully ==="
+qm config "$vmid"
+echo ""
+if $do_template; then
+  echo "Clone with:  qm clone $vmid <newid> --name <name> [--full]"
+fi
+if [[ -z "$cipassword" ]]; then
+  echo "Guest login: Administrator with a blank password (local console only)."
+else
+  echo "Guest login: Administrator with the ConfigDrive2 password supplied at import."
+fi
+echo "Complete the runtime checklist in docs/PVE.md before production use."
