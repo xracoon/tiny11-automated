@@ -65,10 +65,24 @@ function Set-PveUnattend {
         <HideLocalAccountScreen>true</HideLocalAccountScreen>
         <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
         <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
         <ProtectYourPC>3</ProtectYourPC>
-        <SkipMachineOOBE>true</SkipMachineOOBE>
-        <SkipUserOOBE>true</SkipUserOOBE>
       </OOBE>
+      <UserAccounts>
+        <AdministratorPassword>
+          <Value></Value>
+          <PlainText>true</PlainText>
+        </AdministratorPassword>
+      </UserAccounts>
+      <AutoLogon>
+        <Enabled>true</Enabled>
+        <LogonCount>1</LogonCount>
+        <Username>Administrator</Username>
+        <Password>
+          <Value></Value>
+          <PlainText>true</PlainText>
+        </Password>
+      </AutoLogon>
     </component>
   </settings>
 </unattend>
