@@ -41,7 +41,17 @@ jobs:
         run: |
           $deps = Get-Content .\config\pve-dependencies.json -Raw | ConvertFrom-Json
           choco install aria2 -y --no-progress
-          choco install qemu --version $deps.qemu.chocolatey_version -y --no-progress
+          $chocoRetry = 0
+          while ($chocoRetry -lt 3) {
+            choco install qemu --version $deps.qemu.chocolatey_version -y --no-progress
+            if ($LASTEXITCODE -eq 0) { break }
+            $chocoRetry++
+            if ($chocoRetry -lt 3) {
+              Write-Host "Choco install qemu failed, retrying in 10s ($chocoRetry/3)…"
+              Start-Sleep -Seconds 10
+            }
+          }
+          if ($chocoRetry -ge 3) { throw 'QEMU install failed after 3 retries.' }
           $qemuImg = Get-ChildItem 'C:\Program Files\qemu' -Filter qemu-img.exe -Recurse | Select-Object -First 1
           if (-not $qemuImg) { throw 'Pinned qemu-img.exe was not installed.' }
           "QEMU_IMG=$($qemuImg.FullName)" | Out-File $env:GITHUB_ENV -Append
