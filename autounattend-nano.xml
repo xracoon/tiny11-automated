@@ -79,30 +79,34 @@
 			</RunSynchronousCommand>
 			<RunSynchronousCommand wcm:action="add">
 				<Order>15</Order>
-				<Path>reg.exe add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoAdminLogon /t REG_SZ /d "1" /f</Path>
+				<Path>reg.exe add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE" /v LaunchUserOOBE /t REG_DWORD /d 0 /f</Path>
 			</RunSynchronousCommand>
 			<RunSynchronousCommand wcm:action="add">
 				<Order>16</Order>
-				<Path>reg.exe add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultUserName /t REG_SZ /d "Administrator" /f</Path>
+				<Path>reg.exe add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoAdminLogon /t REG_SZ /d "1" /f</Path>
 			</RunSynchronousCommand>
 			<RunSynchronousCommand wcm:action="add">
 				<Order>17</Order>
-				<Path>reg.exe add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultPassword /t REG_SZ /d "" /f</Path>
+				<Path>reg.exe add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultUserName /t REG_SZ /d "Administrator" /f</Path>
 			</RunSynchronousCommand>
 			<RunSynchronousCommand wcm:action="add">
 				<Order>18</Order>
-				<Path>reg.exe add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoLogonCount /t REG_DWORD /d 1 /f</Path>
+				<Path>reg.exe add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultPassword /t REG_SZ /d "" /f</Path>
 			</RunSynchronousCommand>
 			<RunSynchronousCommand wcm:action="add">
 				<Order>19</Order>
-				<Path>powershell.exe -WindowStyle Normal -NoProfile -Command "Add-AppxPackage -Register -Path 'C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\appxmanifest.xml' -DisableDevelopmentMode"</Path>
+				<Path>reg.exe add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoLogonCount /t REG_DWORD /d 1 /f</Path>
 			</RunSynchronousCommand>
 			<RunSynchronousCommand wcm:action="add">
 				<Order>20</Order>
-				<Path>powershell.exe -WindowStyle Normal -NoProfile -Command "Add-AppxPackage -Register -Path 'C:\Windows\SystemApps\Microsoft.UI.Xaml.CBS_8wekyb3d8bbwe\appxmanifest.xml' -DisableDevelopmentMode"</Path>
+				<Path>powershell.exe -WindowStyle Normal -NoProfile -Command "Add-AppxPackage -Register -Path 'C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\appxmanifest.xml' -DisableDevelopmentMode"</Path>
 			</RunSynchronousCommand>
 			<RunSynchronousCommand wcm:action="add">
 				<Order>21</Order>
+				<Path>powershell.exe -WindowStyle Normal -NoProfile -Command "Add-AppxPackage -Register -Path 'C:\Windows\SystemApps\Microsoft.UI.Xaml.CBS_8wekyb3d8bbwe\appxmanifest.xml' -DisableDevelopmentMode"</Path>
+			</RunSynchronousCommand>
+			<RunSynchronousCommand wcm:action="add">
+				<Order>22</Order>
 				<Path>powershell.exe -WindowStyle Normal -NoProfile -Command "Add-AppxPackage -Register -Path 'C:\Windows\SystemApps\MicrosoftWindows.Client.Core_cw5n1h2txyewy\appxmanifest.xml' -DisableDevelopmentMode"</Path>
 			</RunSynchronousCommand>
 			</RunSynchronous>
@@ -131,7 +135,8 @@
 				<ProtectYourPC>3</ProtectYourPC>
 				<HideEULAPage>true</HideEULAPage>
 				<HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
-			<HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+				<HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+				<HideLocalAccountScreen>true</HideLocalAccountScreen>
 			</OOBE>
 			<FirstLogonCommands>
 				<SynchronousCommand wcm:action="add">
