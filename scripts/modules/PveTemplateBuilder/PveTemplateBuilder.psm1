@@ -102,21 +102,26 @@ function Set-PveUnattend {
         </RunSynchronousCommand>
         <RunSynchronousCommand wcm:action="add">
           <Order>12</Order>
+          <Description>Skip OOBE: LaunchUserOOBE=0 (Win11 25H2+)</Description>
+          <Path>reg.exe add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE" /v LaunchUserOOBE /t REG_DWORD /d 0 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>13</Order>
           <Description>AutoLogon: AutoAdminLogon=1</Description>
           <Path>reg.exe add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoAdminLogon /t REG_SZ /d "1" /f</Path>
         </RunSynchronousCommand>
         <RunSynchronousCommand wcm:action="add">
-          <Order>13</Order>
+          <Order>14</Order>
           <Description>AutoLogon: DefaultUserName=Administrator</Description>
           <Path>reg.exe add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultUserName /t REG_SZ /d "Administrator" /f</Path>
         </RunSynchronousCommand>
         <RunSynchronousCommand wcm:action="add">
-          <Order>14</Order>
+          <Order>15</Order>
           <Description>AutoLogon: DefaultPassword (blank)</Description>
           <Path>reg.exe add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultPassword /t REG_SZ /d "" /f</Path>
         </RunSynchronousCommand>
         <RunSynchronousCommand wcm:action="add">
-          <Order>15</Order>
+          <Order>16</Order>
           <Description>AutoLogon: AutoLogonCount=1</Description>
           <Path>reg.exe add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoLogonCount /t REG_DWORD /d 1 /f</Path>
         </RunSynchronousCommand>
