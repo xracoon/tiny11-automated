@@ -137,13 +137,15 @@
 					<PlainText>true</PlainText>
 				</Password>
 			</AutoLogon>
-			<OOBE>
-				<ProtectYourPC>3</ProtectYourPC>
-				<HideEULAPage>true</HideEULAPage>
-				<HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
-				<HideOnlineAccountScreens>true</HideOnlineAccountScreens>
-				<HideLocalAccountScreen>true</HideLocalAccountScreen>
-			</OOBE>
+		<OOBE>
+			<ProtectYourPC>3</ProtectYourPC>
+			<HideEULAPage>true</HideEULAPage>
+			<HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+			<HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+			<HideLocalAccountScreen>true</HideLocalAccountScreen>
+			<SkipMachineOOBE>true</SkipMachineOOBE>
+			<SkipUserOOBE>true</SkipUserOOBE>
+		</OOBE>
 			<FirstLogonCommands>
 				<SynchronousCommand wcm:action="add">
 					<Order>1</Order>

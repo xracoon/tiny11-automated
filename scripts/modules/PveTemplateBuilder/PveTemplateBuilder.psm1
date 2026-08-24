@@ -143,6 +143,8 @@ function Set-PveUnattend {
         <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
         <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
         <ProtectYourPC>3</ProtectYourPC>
+        <SkipMachineOOBE>true</SkipMachineOOBE>
+        <SkipUserOOBE>true</SkipUserOOBE>
       </OOBE>
       <UserAccounts>
         <AdministratorPassword>
